@@ -22,7 +22,9 @@ The scope is the repository, not a plugin: a consumer holding several plugins ge
 
 ### Dependency version policy
 
-The manifest's `devDependencies`, `dependencies` and `optionalDependencies` select packages to install: a dsh dependency there moves to `^<target>`. `peerDependencies` states compatibility with the consumer's runtime, so it is not replaced with the development version. A peer range that already admits the target stays unchanged; otherwise the bump appends ` || ^<target>`. The original range and its exclusions remain intact, so supporting a new target does not drop the runtime versions the plugin already declared.
+Only `devDependencies` states what the plugin is developed and validated against: a dsh dependency there moves to `^<target>`. The other three blocks state what the plugin runs against, so their minimum is the floor the plugin supports and a migration never raises it.
+
+`peerDependencies`, `dependencies` and `optionalDependencies` take the same treatment: a range that already admits the target stays unchanged, and one that does not gains a ` || ^<target>` branch. The original range and its exclusions remain intact, so supporting a new target never drops a release the plugin already declared.
 
 For a plugin developed and deployed on `0.2.2-rc.1`, an attempt against `0.2.2-rc.3` can produce:
 
@@ -31,15 +33,18 @@ For a plugin developed and deployed on `0.2.2-rc.1`, an attempt against `0.2.2-r
   "peerDependencies": {
     "@deepseek-ai/dsh-agent": "0.2.2-rc.1 || ^0.2.2-rc.3"
   },
+  "dependencies": {
+    "@deepseek-ai/dsh-agent": "0.2.2-rc.1 || ^0.2.2-rc.3"
+  },
   "devDependencies": {
     "@deepseek-ai/dsh-agent": "^0.2.2-rc.3"
   }
 }
 ```
 
-A pre-existing `^0.2.2-rc.1` peer already admits `rc.3` and is left as written. Prereleases from a different version cohort need an explicit additional branch by npm's rules. An unrestricted peer is spelled as `>=0.0.0-0` before adding a prerelease branch, because npm otherwise collapses `* || ^<prerelease>` to `*` and discards the target. Non-registry references and packages outside `@deepseek-ai/dsh-*` are untouched.
+A pre-existing `^0.2.2-rc.1` range already admits `rc.3` and is left as written. Prereleases from a different version cohort need an explicit additional branch by npm's rules. An unrestricted range is spelled as `>=0.0.0-0` before adding a prerelease branch, because npm otherwise collapses `* || ^<prerelease>` to `*` and discards the target. Non-registry references and packages outside `@deepseek-ai/dsh-*` are untouched.
 
-The target is the version used by the checks, not a request to upgrade the deployed harness. The proposal says so and asks the maintainer to check that deployment's peer requirements before merging. Preserving a declared range does not re-test every historical runtime or prove a source-code migration is backward compatible; this Action changes no plugin source. A manifest that already lost an older peer minimum is not silently repaired: the maintainer restores evidence-backed support once, and subsequent bumps retain it.
+The target is the version used by the checks, not a request to upgrade the deployed harness: the checks install it explicitly (`src/mechanical/peers.ts`), so validating against the target does not depend on the declared ranges. The proposal says so and asks the maintainer to check that deployment's peer requirements before merging. Widening a declaration does not re-test every historical runtime or prove a source-code migration is backward compatible; this Action changes no plugin source. A manifest whose floor was already raised by an earlier version of this tool is not silently rewritten: that would assert support the plugin may no longer have. The maintainer restores evidence-backed support once, and later bumps retain it.
 
 ## 3. Invariants
 
@@ -82,7 +87,7 @@ A failure is reported where it happened and left there. The check's output is bo
 
 ## Design decisions
 
-- **A bump extends peer support rather than replacing the runtime minimum with the test target** (*decided*). Why: a maintainer may develop and validate against a newer harness while users still deploy an older supported one. Constraint: the peer support set does not shrink, existing bounds are retained, and installed dependencies still move to the target; widening does not deploy a harness or repair sources. The [dependency version policy](#dependency-version-policy) owns the exact range rules. Revisit when: the owner explicitly requests a support-policy change that drops older runtimes.
+- **A bump adds target support without ever raising the plugin's runtime floor** (*decided*). Why: a maintainer may validate against a newer harness while users still deploy an older supported one, and only they can decide that an old release stopped working. Constraint: `peerDependencies`, `dependencies` and `optionalDependencies` keep their minimum and gain the target only when it did not admit it; only `devDependencies` moves to the target; widening does not deploy a harness or repair sources. The [dependency version policy](#dependency-version-policy) owns the exact range rules. Revisit when: the owner explicitly requests a support-policy change that drops older runtimes.
 
 - **A migration consults no model** (*decided*). Why: the work is a version bump plus the plugin's own checks, and both are deterministic; a model in that loop made the outcome depend on a provider, a prompt, a spend cap and a session that could fail on its own. Constraint: no session, prompt, spend cap or repair attempt exists in the Action, and a failing check is never followed by an edit to the plugin. Revisit when: an upgrade needs a change no bump can express and the owner asks for one to be attempted automatically.
 - **A failed migration proposes a draft** (*decided*). Why: the failing output only means something beside the diff that produced it, and reproducing the bump by hand to read it is work the Action already did. Constraint: the proposal is a draft, says the checks fail, and the migration ends `awaitingMerge`; only a migration that changed nothing and failed ends `failed`.

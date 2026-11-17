@@ -15,17 +15,18 @@ const MANIFEST = {
   devDependencies: { [PACKAGE]: '~0.1.7', typescript: '^5' },
 }
 
-test('dsh installed dependencies move to the target while peer support is extended', () => {
+test('only development dependencies move to the target; runtime ranges keep their minimum', () => {
   const plan = planBump(MANIFEST, '0.2.0', { ownVersion: false })
   assert.deepEqual(plan.changes.map(change => `${change.field}: ${change.from} -> ${change.to}`), [
     `peerDependencies.@deepseek-ai/dsh-cli: ^0.1.7 -> ^0.1.7 || ${rangeFor('0.2.0')}`,
-    `dependencies.@deepseek-ai/dsh-llm: >=0.1.0 <0.2 -> ${rangeFor('0.2.0')}`,
+    `dependencies.@deepseek-ai/dsh-llm: >=0.1.0 <0.2 -> >=0.1.0 <0.2 || ${rangeFor('0.2.0')}`,
     `devDependencies.${PACKAGE}: ~0.1.7 -> ${rangeFor('0.2.0')}`,
   ])
   assert.deepEqual(plan.manifest?.peerDependencies, { '@deepseek-ai/dsh-cli': '^0.1.7 || ^0.2.0', react: '^18' })
   // A workspace reference is not a registry range and is left alone.
-  assert.deepEqual(plan.manifest?.dependencies, { '@deepseek-ai/dsh-llm': '^0.2.0', '@deepseek-ai/dsh-local': 'workspace:*' })
+  assert.deepEqual(plan.manifest?.dependencies, { '@deepseek-ai/dsh-llm': '>=0.1.0 <0.2 || ^0.2.0', '@deepseek-ai/dsh-local': 'workspace:*' })
   assert.equal(plan.manifest?.version, '1.4.2')
+  assert.equal(semver.minVersion('>=0.1.0 <0.2 || ^0.2.0')?.version, '0.1.0')
 })
 
 test('the rc.1 to rc.3 bump preserves the deployed runtime while upgrading development dependencies', () => {
@@ -118,43 +119,64 @@ const releaseArbitrary = fc.tuple(
   fc.constantFrom('', '-rc.1', '-rc.3', '-alpha.2'),
 ).map(([major, minor, patch, suffix]) => `${major}.${minor}.${patch}${suffix}`)
 
-const peerRangeArbitrary = fc.oneof(
+const rangeArbitrary = fc.oneof(
   fc.constantFrom('*', 'x', '>=0.0.0'),
   fc.array(fc.tuple(releaseArbitrary, fc.constantFrom('', '^', '~', '>=')), { minLength: 1, maxLength: 6 })
     .map(branches => branches.map(([version, prefix]) => `${prefix}${version}`).join(' || ')),
 )
 
-test('peer bumps admit the target without raising the declared minimum or losing existing support', () => {
-  fc.assert(fc.property(peerRangeArbitrary, releaseArbitrary, fc.array(releaseArbitrary, { maxLength: 12 }), (range, target, probes) => {
-    const original = { peerDependencies: { [PACKAGE]: range } }
-    const plan = planBump(original, target, { ownVersion: false })
-    const expanded = plan.changes[0]?.to ?? range
-    assert.equal(semver.satisfies(target, expanded), true)
-    const before = semver.minVersion(range)
-    const after = semver.minVersion(expanded)
-    assert.ok(before !== null && after !== null)
-    assert.equal(semver.lte(after, before), true)
-    for (const includePrerelease of [false, true]) {
-      for (const version of [...probes, before.version]) {
-        if (semver.satisfies(version, range, { includePrerelease })) {
-          assert.equal(semver.satisfies(version, expanded, { includePrerelease }), true)
+const RUNTIME_BLOCKS = ['peerDependencies', 'dependencies', 'optionalDependencies'] as const
+
+test('no runtime block admits the target by raising the minimum the plugin already supports', () => {
+  fc.assert(fc.property(rangeArbitrary, releaseArbitrary, fc.array(releaseArbitrary, { maxLength: 12 }), (range, target, probes) => {
+    for (const block of RUNTIME_BLOCKS) {
+      const original = { [block]: { [PACKAGE]: range } }
+      const plan = planBump(original, target, { ownVersion: false })
+      const expanded = plan.changes[0]?.to ?? range
+      assert.equal(semver.satisfies(target, expanded), true, `${block} must admit ${target}`)
+      const before = semver.minVersion(range)
+      const after = semver.minVersion(expanded)
+      assert.ok(before !== null && after !== null)
+      assert.equal(semver.lte(after, before), true, `${block} raised the supported floor`)
+      for (const includePrerelease of [false, true]) {
+        for (const version of [...probes, before.version]) {
+          if (semver.satisfies(version, range, { includePrerelease })) {
+            assert.equal(semver.satisfies(version, expanded, { includePrerelease }), true, `${block} dropped ${version}`)
+          }
         }
       }
+      assert.deepEqual(planBump(plan.manifest ?? original, target, { ownVersion: false }).changes, [])
+      assert.deepEqual(original[block], { [PACKAGE]: range })
     }
-    assert.deepEqual(planBump(plan.manifest ?? original, target, { ownVersion: false }).changes, [])
-    assert.deepEqual(original.peerDependencies, { [PACKAGE]: range })
   }), { numRuns: 500 })
 })
 
-test('installed dependencies and optional dependencies still move to the target', () => {
+test('development dependencies move to the target even when the old range already admitted it', () => {
+  fc.assert(fc.property(rangeArbitrary, releaseArbitrary, (range, target) => {
+    const plan = planBump({ devDependencies: { [PACKAGE]: range } }, target, { ownVersion: false })
+    assert.deepEqual(plan.manifest?.devDependencies, { [PACKAGE]: rangeFor(target) })
+  }), { numRuns: 200 })
+})
+
+test('regular and optional dependencies keep their supported floor and gain the target', () => {
+  const source = '0.2.2-rc.1'
+  const target = '0.2.2-rc.3'
   const plan = planBump({
-    dependencies: { [PACKAGE]: '0.2.2-rc.1' },
-    optionalDependencies: { [PACKAGE]: '0.2.2-rc.1' },
-  }, '0.2.2-rc.3', { ownVersion: false })
+    dependencies: { [PACKAGE]: source },
+    optionalDependencies: { [PACKAGE]: source },
+  }, target, { ownVersion: false })
+  const widened = `${source} || ^${target}`
   assert.deepEqual(plan.manifest, {
-    dependencies: { [PACKAGE]: '^0.2.2-rc.3' },
-    optionalDependencies: { [PACKAGE]: '^0.2.2-rc.3' },
+    dependencies: { [PACKAGE]: widened },
+    optionalDependencies: { [PACKAGE]: widened },
   })
+  for (const range of [widened]) {
+    assert.equal(semver.minVersion(range)?.version, source, 'the supported floor must not rise')
+    assert.equal(semver.satisfies(source, range, { includePrerelease: true }), true)
+    assert.equal(semver.satisfies(target, range), true)
+  }
+  assert.equal(declaredRelease(plan.manifest)?.version, source)
+  assert.deepEqual(checkDependencyContract(plan.manifest, target, () => [source, target]), [])
 })
 
 test('non-registry references and unrelated packages are unchanged in every block', () => {

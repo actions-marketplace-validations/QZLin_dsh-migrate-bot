@@ -160,6 +160,7 @@ assert.equal(manifest.devDependencies[${JSON.stringify(dependency)}], '^' + proc
       name: '@acme/plugin', version: '1.0.1', type: 'module',
       dsh: { bundle: { patch: './cordis.patch.yml' } },
       peerDependencies: { [dependency]: source },
+      dependencies: { [dependency]: source },
       devDependencies: { [dependency]: source },
     }, null, 2) + '\n',
     'compatibility-test.cjs': compatibilityTest,
@@ -170,12 +171,17 @@ assert.equal(manifest.devDependencies[${JSON.stringify(dependency)}], '^' + proc
     const pull = [...github.pulls.values()][0]
     assert.equal(pull?.draft, false, result.output)
     const manifest = JSON.parse(repo.git(['show', 'dsh-migrate/proposal:package.json'], repo.remote)) as {
-      version: string; peerDependencies: Record<string, string>; devDependencies: Record<string, string>
+      version: string; peerDependencies: Record<string, string>; dependencies: Record<string, string>; devDependencies: Record<string, string>
     }
     assert.equal(manifest.version, '1.0.2')
     assert.equal(manifest.peerDependencies[dependency], `${source} || ^${target}`)
-    assert.equal(semver.satisfies(source, manifest.peerDependencies[dependency] as string, { includePrerelease: true }), true)
-    assert.equal(semver.satisfies(target, manifest.peerDependencies[dependency] as string), true)
+    assert.equal(manifest.dependencies[dependency], `${source} || ^${target}`)
+    for (const block of [manifest.peerDependencies, manifest.dependencies]) {
+      const range = block[dependency] as string
+      assert.equal(semver.minVersion(range)?.version, source, 'the supported floor must not rise')
+      assert.equal(semver.satisfies(source, range, { includePrerelease: true }), true)
+      assert.equal(semver.satisfies(target, range), true)
+    }
     assert.equal(manifest.devDependencies[dependency], `^${target}`)
     assert.equal(repo.git(['diff', '--name-only', 'main', 'dsh-migrate/proposal'], repo.remote), 'package.json')
     assert.equal(repo.git(['show', 'dsh-migrate/proposal:index.js'], repo.remote), 'export const apply = () => {}')

@@ -6,7 +6,7 @@ A GitHub Action that raises a [DeepSeek Harness](https://github.com/deepseek-ai/
 
 For each consumer repository and target release, one migration, which covers the plugin at the repository's root or every plugin below it:
 
-1. updates installed `@deepseek-ai/dsh-*` dependencies for the target release, extends peer compatibility without dropping existing support, and, unless the consumer turns it off, raises each plugin's own `version` by a patch ([dependency version policy](docs/design/workflow.md#dependency-version-policy));
+1. adds the target release to the `@deepseek-ai/dsh-*` ranges the plugin runs against without ever raising their minimum, moves development dependencies to the target, and, unless the consumer turns it off, raises each plugin's own `version` by a patch ([dependency version policy](docs/design/workflow.md#dependency-version-policy));
 2. runs the [checks](docs/design/checks.md#the-checks) — mechanical (dependency contract, build, typecheck, tests), boot, and web — and stops at the first failure;
 3. proposes the changed tree on the branch `dsh-migrate/proposal`, with a pull request and an issue that carry the changed fields and the output of every check. A migration whose checks failed publishes the same proposal as a draft, so the change and its failure are read together.
 

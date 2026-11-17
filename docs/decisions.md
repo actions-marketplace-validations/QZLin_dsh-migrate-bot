@@ -7,7 +7,7 @@ A new decision adds an entry to the Design decisions section of its owning docum
 | Decision | Status | Owner document |
 |---|---|---|
 | A migration consults no model | decided | [Workflow decisions](design/workflow.md#design-decisions) |
-| A bump retains existing peer support instead of making the test target a runtime minimum | decided | [Workflow decisions](design/workflow.md#design-decisions) |
+| A bump adds target support without raising the plugin's runtime floor | decided | [Workflow decisions](design/workflow.md#design-decisions) |
 | A failed migration proposes a draft instead of being repaired | decided | [Workflow decisions](design/workflow.md#design-decisions) |
 | The event log on the state branch is the only durable state | decided | [Workflow decisions](design/workflow.md#design-decisions) |
 | The checks are keyless and deterministic | decided | [Checks decisions](design/checks.md#design-decisions) |

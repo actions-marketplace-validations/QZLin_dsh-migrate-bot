@@ -4,9 +4,11 @@ import semver from 'semver'
  * The version bump: what a plugin's `package.json` says after moving to a new
  * harness release, computed without touching the filesystem.
  *
- * A bump updates installed `@deepseek-ai/dsh-*` dependencies to the target
- * release. Peer dependencies are runtime compatibility declarations: their
- * existing support is retained and the target is added only when needed.
+ * A bump adds the target release to the `@deepseek-ai/dsh-*` ranges that state
+ * what the plugin runs against: `peerDependencies`, `dependencies` and
+ * `optionalDependencies` keep their existing minimum and gain the target only
+ * when they did not admit it. `devDependencies` states what the plugin is
+ * developed and validated against, so it moves to the target.
  * When the consumer asks for it, the plugin's own `version` rises by a patch.
  * Dependencies outside the harness scope and non-registry references such as
  * a workspace or a `file:` path are left alone.
@@ -17,6 +19,12 @@ import semver from 'semver'
 
 /** The dependency blocks a bump rewrites, in the order they are reported. */
 export const DEPENDENCY_BLOCKS = ['peerDependencies', 'dependencies', 'devDependencies', 'optionalDependencies'] as const
+
+/**
+ * The blocks that state which harness releases the plugin runs against. Their
+ * minimum is the plugin's supported floor, which a migration never raises.
+ */
+const RUNTIME_BLOCKS = new Set<string>(['peerDependencies', 'dependencies', 'optionalDependencies'])
 
 /** The scope of the harness packages, which every release publishes under its own version. */
 export const DSH_SCOPE = '@deepseek-ai/dsh-'
@@ -39,16 +47,16 @@ export interface BumpOptions {
   ownVersion: boolean
 }
 
-/** The target range for installed dependencies and new peer support. */
+/** The range a development dependency names for the target harness release. */
 export function rangeFor(version: string): string {
   return `^${version}`
 }
 
-/** Retain existing peer support instead of making the test target a runtime minimum. */
-function peerRangeFor(range: string, target: string): string {
+/** Add the target to a runtime range without raising the version the plugin already supports. */
+function compatibleRangeFor(range: string, target: string): string {
   if (semver.satisfies(target, range)) return range
   // npm collapses `* || ^<prerelease>` to `*`, losing the explicit prerelease.
-  // Spell an unrestricted peer as a lower comparator so the union survives.
+  // Spell an unrestricted range as a lower comparator so the union survives.
   // This also retains every prerelease the harness's wildcard check admitted.
   const current = new semver.Range(range).range === '' ? '>=0.0.0-0' : range
   return `${current} || ${rangeFor(target)}`
@@ -76,7 +84,7 @@ export function planBump(manifest: Record<string, unknown>, target: string, opti
     for (const [name, range] of Object.entries(entries)) {
       // A workspace, file or git reference is not a registry range.
       if (!name.startsWith(DSH_SCOPE) || typeof range !== 'string' || semver.validRange(range) === null) continue
-      const desired = block === 'peerDependencies' ? peerRangeFor(range, target) : targetRange
+      const desired = RUNTIME_BLOCKS.has(block) ? compatibleRangeFor(range, target) : targetRange
       if (range === desired) continue
       bumped[name] = desired
       touched = true

@@ -16,7 +16,7 @@ Every document uses these terms as written here and does not redefine them. *Rep
 | **source release** | The release the plugin worked on before: the target of the last verified migration, or the lowest release the plugin's `@deepseek-ai/dsh-*` ranges admit. | `source` | baseline tag |
 | **consumer** | A plugin repository that runs the Action. | `GITHUB_REPOSITORY` | consumer plugin repo, plugin repo |
 | **plugin** | A directory whose `package.json` declares `dsh.bundle`; a consumer holds one at its root or several below it. | `Plugin`, `findPlugins` | — |
-| **bump** | Updating a plugin for the target release: its installed dsh dependencies, its peer support without dropping existing compatibility, and optionally its own `version` by a patch. | `planBump`, `bump.done` | version bump attempt, minor migrate |
+| **bump** | Updating a plugin for the target release: adding target support to its runtime dsh ranges without raising their minimum, moving development dependencies to the target, and optionally raising its own `version` by a patch. | `planBump`, `bump.done` | version bump attempt, minor migrate |
 | **bump change** | One manifest field a bump rewrote, with the value before and after. | `BumpChangeEntry`, `BumpChange` | version delta |
 | **migration** | One consumer and one target release: the unit of work, identified by the target version. | `migrations/<version>/` | migrate run |
 | **check** | One of the three keyless checks of a tree against a release: mechanical, boot, web. A check produces a **check result** with an outcome `pass`, `fail` or `skipped`. | `CheckName`, `CheckResult` | gate stack, verification layer, fast gate |
