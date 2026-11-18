@@ -1,6 +1,6 @@
 {
   "name": "@royenheart/dsh-migrate-action",
-  "version": "3.0.3",
+  "version": "3.1.0",
   "description": "Composite GitHub Action that raises third-party DeepSeek Harness plugins to new harness releases and runs their checks; no model is consulted and no container is needed.",
   "license": "MIT",
   "type": "module",

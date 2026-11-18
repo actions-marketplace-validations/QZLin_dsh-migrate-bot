@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/).
 Entries are generated from the commit history by [Commitizen](https://commitizen-tools.github.io/commitizen/); do not edit them by hand.
 
+## v3.1.0 (2026-11-18)
+
+### Feat
+
+- **bump**: bump engines.dsh with the runtime declarations
+
 ## v3.0.3 (2026-11-17)
 
 ### Fix

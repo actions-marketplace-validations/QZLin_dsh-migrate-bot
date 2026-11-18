@@ -161,6 +161,7 @@ assert.equal(manifest.devDependencies[${JSON.stringify(dependency)}], '^' + proc
       dsh: { bundle: { patch: './cordis.patch.yml' } },
       peerDependencies: { [dependency]: source },
       dependencies: { [dependency]: source },
+      engines: { node: '>=24', dsh: source },
       devDependencies: { [dependency]: source },
     }, null, 2) + '\n',
     'compatibility-test.cjs': compatibilityTest,
@@ -171,11 +172,17 @@ assert.equal(manifest.devDependencies[${JSON.stringify(dependency)}], '^' + proc
     const pull = [...github.pulls.values()][0]
     assert.equal(pull?.draft, false, result.output)
     const manifest = JSON.parse(repo.git(['show', 'dsh-migrate/proposal:package.json'], repo.remote)) as {
-      version: string; peerDependencies: Record<string, string>; dependencies: Record<string, string>; devDependencies: Record<string, string>
+      version: string
+      peerDependencies: Record<string, string>
+      dependencies: Record<string, string>
+      engines: Record<string, string>
+      devDependencies: Record<string, string>
     }
     assert.equal(manifest.version, '1.0.2')
     assert.equal(manifest.peerDependencies[dependency], `${source} || ^${target}`)
     assert.equal(manifest.dependencies[dependency], `${source} || ^${target}`)
+    assert.equal(manifest.engines.dsh, `${source} || ^${target}`)
+    assert.equal(manifest.engines.node, '>=24')
     for (const block of [manifest.peerDependencies, manifest.dependencies]) {
       const range = block[dependency] as string
       assert.equal(semver.minVersion(range)?.version, source, 'the supported floor must not rise')

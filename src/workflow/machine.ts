@@ -123,7 +123,7 @@ export const migrationMachine = setup({
       always: { target: 'bumping' },
     },
     bumping: {
-      description: 'Add target support to runtime dsh ranges without raising their minimum, move development dependencies to the target, and optionally raise each plugin version.',
+      description: 'Add target support to the runtime dsh declarations, engines.dsh included, without raising their minimum; move development dependencies to the target; optionally raise each plugin version.',
       entry: { type: 'run', params: { activity: 'bump' } },
       on: {
         'bump.done': {

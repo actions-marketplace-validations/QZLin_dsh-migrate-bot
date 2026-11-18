@@ -22,14 +22,17 @@ The scope is the repository, not a plugin: a consumer holding several plugins ge
 
 ### Dependency version policy
 
-Only `devDependencies` states what the plugin is developed and validated against: a dsh dependency there moves to `^<target>`. The other three blocks state what the plugin runs against, so their minimum is the floor the plugin supports and a migration never raises it.
+Only `devDependencies` states what the plugin is developed and validated against: a dsh dependency there moves to `^<target>`. Every other declaration of the harness the plugin runs on — `peerDependencies`, `dependencies`, `optionalDependencies` and `engines.dsh` — states the floor the plugin supports, and a migration never raises it.
 
-`peerDependencies`, `dependencies` and `optionalDependencies` take the same treatment: a range that already admits the target stays unchanged, and one that does not gains a ` || ^<target>` branch. The original range and its exclusions remain intact, so supporting a new target never drops a release the plugin already declared.
+Those four take the same treatment: a range that already admits the target stays unchanged, and one that does not gains a ` || ^<target>` branch. The original range and its exclusions remain intact, so supporting a new target never drops a release the plugin already declared.
 
 For a plugin developed and deployed on `0.2.2-rc.1`, an attempt against `0.2.2-rc.3` can produce:
 
 ```json
 {
+  "engines": {
+    "dsh": "0.2.2-rc.1 || ^0.2.2-rc.3"
+  },
   "peerDependencies": {
     "@deepseek-ai/dsh-agent": "0.2.2-rc.1 || ^0.2.2-rc.3"
   },
@@ -87,7 +90,7 @@ A failure is reported where it happened and left there. The check's output is bo
 
 ## Design decisions
 
-- **A bump adds target support without ever raising the plugin's runtime floor** (*decided*). Why: a maintainer may validate against a newer harness while users still deploy an older supported one, and only they can decide that an old release stopped working. Constraint: `peerDependencies`, `dependencies` and `optionalDependencies` keep their minimum and gain the target only when it did not admit it; only `devDependencies` moves to the target; widening does not deploy a harness or repair sources. The [dependency version policy](#dependency-version-policy) owns the exact range rules. Revisit when: the owner explicitly requests a support-policy change that drops older runtimes.
+- **A bump adds target support without ever raising the plugin's runtime floor** (*decided*). Why: a maintainer may validate against a newer harness while users still deploy an older supported one, and only they can decide that an old release stopped working. Constraint: `peerDependencies`, `dependencies`, `optionalDependencies` and `engines.dsh` keep their minimum and gain the target only when it did not admit it; only `devDependencies` moves to the target; widening does not deploy a harness or repair sources. The [dependency version policy](#dependency-version-policy) owns the exact range rules. Revisit when: the owner explicitly requests a support-policy change that drops older runtimes.
 
 - **A migration consults no model** (*decided*). Why: the work is a version bump plus the plugin's own checks, and both are deterministic; a model in that loop made the outcome depend on a provider, a prompt, a spend cap and a session that could fail on its own. Constraint: no session, prompt, spend cap or repair attempt exists in the Action, and a failing check is never followed by an edit to the plugin. Revisit when: an upgrade needs a change no bump can express and the owner asks for one to be attempted automatically.
 - **A failed migration proposes a draft** (*decided*). Why: the failing output only means something beside the diff that produced it, and reproducing the bump by hand to read it is work the Action already did. Constraint: the proposal is a draft, says the checks fail, and the migration ends `awaitingMerge`; only a migration that changed nothing and failed ends `failed`.

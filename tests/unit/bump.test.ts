@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import semver from 'semver'
 import fc from 'fast-check'
-import { planBump, formatManifest, rangeFor } from '../../src/domain/bump.ts'
+import { planBump, formatManifest, rangeFor, ENGINE_KEY } from '../../src/domain/bump.ts'
 import { checkDependencyContract } from '../../src/mechanical/dependencies.ts'
 import { declaredRelease } from '../../src/domain/release.ts'
 
@@ -127,28 +127,56 @@ const rangeArbitrary = fc.oneof(
 
 const RUNTIME_BLOCKS = ['peerDependencies', 'dependencies', 'optionalDependencies'] as const
 
-test('no runtime block admits the target by raising the minimum the plugin already supports', () => {
+/** Every field that declares the harness releases the plugin runs against. */
+const DECLARATIONS = [
+  ...RUNTIME_BLOCKS.map(block => ({
+    name: block,
+    wrap: (range: string): Record<string, unknown> => ({ [block]: { [PACKAGE]: range } }),
+    read: (manifest: Record<string, unknown>): string => (manifest[block] as Record<string, string>)[PACKAGE] as string,
+  })),
+  {
+    name: 'engines.dsh',
+    wrap: (range: string): Record<string, unknown> => ({ engines: { [ENGINE_KEY]: range } }),
+    read: (manifest: Record<string, unknown>): string => (manifest.engines as Record<string, string>)[ENGINE_KEY] as string,
+  },
+]
+
+test('no runtime declaration admits the target by raising the minimum the plugin already supports', () => {
   fc.assert(fc.property(rangeArbitrary, releaseArbitrary, fc.array(releaseArbitrary, { maxLength: 12 }), (range, target, probes) => {
-    for (const block of RUNTIME_BLOCKS) {
-      const original = { [block]: { [PACKAGE]: range } }
+    for (const declaration of DECLARATIONS) {
+      const original = declaration.wrap(range)
       const plan = planBump(original, target, { ownVersion: false })
       const expanded = plan.changes[0]?.to ?? range
-      assert.equal(semver.satisfies(target, expanded), true, `${block} must admit ${target}`)
+      assert.equal(semver.satisfies(target, expanded), true, `${declaration.name} must admit ${target}`)
       const before = semver.minVersion(range)
       const after = semver.minVersion(expanded)
       assert.ok(before !== null && after !== null)
-      assert.equal(semver.lte(after, before), true, `${block} raised the supported floor`)
+      assert.equal(semver.lte(after, before), true, `${declaration.name} raised the supported floor`)
       for (const includePrerelease of [false, true]) {
         for (const version of [...probes, before.version]) {
           if (semver.satisfies(version, range, { includePrerelease })) {
-            assert.equal(semver.satisfies(version, expanded, { includePrerelease }), true, `${block} dropped ${version}`)
+            assert.equal(semver.satisfies(version, expanded, { includePrerelease }), true, `${declaration.name} dropped ${version}`)
           }
         }
       }
       assert.deepEqual(planBump(plan.manifest ?? original, target, { ownVersion: false }).changes, [])
-      assert.deepEqual(original[block], { [PACKAGE]: range })
+      assert.equal(declaration.read(original), range)
     }
   }), { numRuns: 500 })
+})
+
+test('engines.dsh gains the target without raising its floor, and its other keys are untouched', () => {
+  const source = '0.2.2-rc.1'
+  const target = '0.2.2-rc.3'
+  const plan = planBump({ engines: { node: '>=24', [ENGINE_KEY]: source } }, target, { ownVersion: false })
+  assert.deepEqual(plan.changes, [{ field: `engines.${ENGINE_KEY}`, from: source, to: `${source} || ^${target}` }])
+  assert.deepEqual(plan.manifest?.engines, { node: '>=24', [ENGINE_KEY]: `${source} || ^${target}` })
+})
+
+test('an engines declaration that already admits the target, or is not a registry range, is left alone', () => {
+  for (const engines of [{ [ENGINE_KEY]: '^0.2.2-rc.1' }, { [ENGINE_KEY]: 'workspace:*' }, { [ENGINE_KEY]: 3 }, {}, 'nonsense', null]) {
+    assert.deepEqual(planBump({ engines }, '0.2.2-rc.3', { ownVersion: false }).changes, [], JSON.stringify(engines))
+  }
 })
 
 test('development dependencies move to the target even when the old range already admitted it', () => {

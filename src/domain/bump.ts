@@ -4,11 +4,11 @@ import semver from 'semver'
  * The version bump: what a plugin's `package.json` says after moving to a new
  * harness release, computed without touching the filesystem.
  *
- * A bump adds the target release to the `@deepseek-ai/dsh-*` ranges that state
- * what the plugin runs against: `peerDependencies`, `dependencies` and
- * `optionalDependencies` keep their existing minimum and gain the target only
- * when they did not admit it. `devDependencies` states what the plugin is
- * developed and validated against, so it moves to the target.
+ * A bump adds the target release to every declaration of what the plugin runs
+ * against: `peerDependencies`, `dependencies`, `optionalDependencies` and
+ * `engines.dsh` keep their existing minimum and gain the target only when they
+ * did not admit it. `devDependencies` states what the plugin is developed and
+ * validated against, so it moves to the target.
  * When the consumer asks for it, the plugin's own `version` rises by a patch.
  * Dependencies outside the harness scope and non-registry references such as
  * a workspace or a `file:` path are left alone.
@@ -25,6 +25,13 @@ export const DEPENDENCY_BLOCKS = ['peerDependencies', 'dependencies', 'devDepend
  * minimum is the plugin's supported floor, which a migration never raises.
  */
 const RUNTIME_BLOCKS = new Set<string>(['peerDependencies', 'dependencies', 'optionalDependencies'])
+
+/**
+ * The key of the `engines` object that names the harness releases the plugin
+ * requires: a runtime floor like {@link RUNTIME_BLOCKS}, not an installed
+ * package.
+ */
+export const ENGINE_KEY = 'dsh'
 
 /** The scope of the harness packages, which every release publishes under its own version. */
 export const DSH_SCOPE = '@deepseek-ai/dsh-'
@@ -91,6 +98,18 @@ export function planBump(manifest: Record<string, unknown>, target: string, opti
       changes.push({ field: `${block}.${name}`, from: range, to: desired })
     }
     if (touched) next[block] = bumped
+  }
+  const engines = manifest.engines
+  if (isRecord(engines)) {
+    const range = engines[ENGINE_KEY]
+    // A non-registry or unparseable declaration is left as it is.
+    if (typeof range === 'string' && semver.validRange(range) !== null) {
+      const desired = compatibleRangeFor(range, target)
+      if (range !== desired) {
+        next.engines = { ...engines, [ENGINE_KEY]: desired }
+        changes.push({ field: `engines.${ENGINE_KEY}`, from: range, to: desired })
+      }
+    }
   }
   const own = manifest.version
   if (options.ownVersion && typeof own === 'string' && semver.valid(own) === own) {
